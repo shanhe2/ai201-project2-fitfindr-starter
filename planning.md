@@ -63,7 +63,8 @@ Takes the outfit suggestion string and the selected listing and asks the Groq LL
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `outfit` (...): The outfit suggestion string returned by suggest_outfit. It must be non-empty
+- `outfit` (str): The outfit suggestion string from `suggest_outfit`. May be empty or whitespace-only — the tool guards against this internally and returns a descriptive error string instead of raising an exception.
+- `new_item` (dict): The selected listing dict, used to pull title, price, and platform into the caption naturally.
 
 **What it returns:**
 <!-- Describe the return value -->
@@ -131,7 +132,7 @@ For each tool, describe the specific failure mode you're handling and what the a
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
 | search_listings | No results match the query | Sets `session["error"]` to "No listings matched your search. Try a broader description, a different size, or raise your price limit." Displays in the error panel. Interaction stops — `suggest_outfit` is never called. |
-| suggest_outfit | Wardrobe is empty | Sets `session["error"]` to "Couldn't generate outfit suggestions — please try again." Displays in the error panel. Interaction stops — `create_fit_card` is never called. |
+| suggest_outfit | Wardrobe is empty | The tool handles this internally — it calls the LLM with a general styling prompt instead of a wardrobe-specific one, and returns styling advice rather than raising or returning an empty string. The planning loop continues normally to `create_fit_card`. |
 | create_fit_card | Outfit input is missing or incomplete | Returns a descriptive error string (e.g. "Could not generate fit card: outfit suggestion was empty.") stored in `session["fit_card"]`. Displayed in the fit card panel as a degraded output — `session["error"]` remains None, the listing and outfit panels still show. |
 
 ---
