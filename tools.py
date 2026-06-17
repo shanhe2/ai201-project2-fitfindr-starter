@@ -122,8 +122,40 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    client = _get_groq_client()
+
+    item_desc = (
+        f"{new_item['title']} (${new_item['price']}, {new_item['condition']} condition, "
+        f"style: {', '.join(new_item['style_tags'])})"
+    )
+
+    wardrobe_items = wardrobe.get("items", [])
+
+    if not wardrobe_items:
+        prompt = (
+            f"A user just thrifted: {item_desc}.\n"
+            "They haven't added their wardrobe yet. Give them 1–2 general outfit ideas "
+            "for this item — what types of bottoms, shoes, and outerwear pair well with it, "
+            "and what overall vibe or aesthetic it suits. Be specific and practical."
+        )
+    else:
+        wardrobe_lines = "\n".join(
+            f"- {w['name']} ({w['category']}, {', '.join(w['style_tags'])})"
+            for w in wardrobe_items
+        )
+        prompt = (
+            f"A user just thrifted: {item_desc}.\n\n"
+            f"Their wardrobe includes:\n{wardrobe_lines}\n\n"
+            "Suggest 1–2 complete outfits that pair the new item with specific pieces "
+            "from their wardrobe. Reference each piece by name. Be specific about styling "
+            "(tucking, layering, footwear) and describe the overall vibe of each look."
+        )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content or ""
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -155,5 +187,23 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    if not outfit or not outfit.strip():
+        return "Could not generate fit card: outfit suggestion was empty."
+
+    client = _get_groq_client()
+
+    prompt = (
+        f"Write a 2–4 sentence Instagram/TikTok caption for this thrifted outfit.\n\n"
+        f"Item: {new_item['title']} — ${new_item['price']} from {new_item['platform']}\n"
+        f"Outfit: {outfit}\n\n"
+        "The caption should sound like a real person posting their OOTD — casual, "
+        "specific, and authentic. Mention the item name, price, and platform naturally "
+        "once each. Capture the vibe of the outfit in specific terms. No hashtags."
+    )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=1.4,
+    )
+    return response.choices[0].message.content or ""
