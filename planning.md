@@ -130,9 +130,9 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| search_listings | No results match the query | |
-| suggest_outfit | Wardrobe is empty | |
-| create_fit_card | Outfit input is missing or incomplete | |
+| search_listings | No results match the query | Sets `session["error"]` to "No listings matched your search. Try a broader description, a different size, or raise your price limit." Displays in the error panel. Interaction stops — `suggest_outfit` is never called. |
+| suggest_outfit | Wardrobe is empty | Sets `session["error"]` to "Couldn't generate outfit suggestions — please try again." Displays in the error panel. Interaction stops — `create_fit_card` is never called. |
+| create_fit_card | Outfit input is missing or incomplete | Returns a descriptive error string (e.g. "Could not generate fit card: outfit suggestion was empty.") stored in `session["fit_card"]`. Displayed in the fit card panel as a degraded output — `session["error"]` remains None, the listing and outfit panels still show. |
 
 ---
 
@@ -234,16 +234,21 @@ Write out what a full user interaction looks like from start to finish — tool 
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
-search_listings("vintage graphic tee", max_price=30.0) filters the listings dataset against title, description, style_tags, category, and price. It returns matching listings sorted by relevance. If the matching list is empty, then it means nothing matches. The agent stops and returns a message telling the user no clothes are matching. In this case, the agent will not move on calling `suggest_outfit`.
+The planning loop parses the query and extracts `description="vintage graphic tee"`, `size=None`, `max_price=30.0`. It calls `search_listings("vintage graphic tee", size=None, max_price=30.0)`, which filters listings.json against `title`, `description`, `style_tags`, and `price`. It scores by keyword overlap with "vintage graphic tee", drops anything over $30, and returns a ranked list. The top result is `lst_002`: `{"title": "Y2K Baby Tee — Butterfly Print", "price": 18.0, "condition": "excellent", "platform": "depop", "style_tags": ["y2k", "vintage", "graphic tee", "cottagecore"], ...}`. The planning loop sets `session["selected_item"] = results[0]` and proceeds. If the list is empty, the planning loop sets `session["error"]` to "No listings matched your search. Try a broader description, a different size, or raise your price limit." and returns the session immediately without calling `suggest_outfit`.
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
-When the step 1 output a non empty list, the `suggest_outfit` takes the first item from the list as an input. `suggest_outfit(new_item=<band tee>, wardrobe=<user's wardrobe>)`. This will send the item and the user's wardrobe to the Groq LLM. Then it returns string suggestion result like: "Pair this with your baggy jeans and chunky sneakers for an easy streetwear look. Leave it untucked and slightly oversized." If the wardrobe is empty, offer general styling advice for the item rather than raising an exception or returning an empty string.
+The planning loop calls `suggest_outfit(new_item=session["selected_item"], wardrobe=session["wardrobe"])`. The wardrobe contains baggy straight-leg jeans, chunky white sneakers, and a vintage black denim jacket (among others). The Groq LLM returns: `"Pair the Y2K baby tee with your baggy straight-leg jeans and chunky white sneakers for an easy streetwear look. Throw your vintage black denim jacket over it and leave it open for a layered 90s vibe."` The planning loop stores this in `session["outfit_suggestion"]` and proceeds. If the LLM returns an empty string, the planning loop sets `session["error"]` to "Couldn't generate outfit suggestions — please try again." and returns early without calling `create_fit_card`.
 
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
-The outfit suggestion triggers `create_fit_card(outfit=<suggestion>, new_item=<band tee>)`, which produces a short shareable OOTD caption. If it receives an empty outfit string, it returns a descriptive error string instead of crashing.
+The planning loop calls `create_fit_card(outfit=session["outfit_suggestion"], new_item=session["selected_item"])`. The Groq LLM returns: `"thrifted this y2k butterfly tee off depop for $18 and it was made for my baggy jeans 🦋 vintage denim jacket on top and we're done. full look in my stories"`. The planning loop stores this in `session["fit_card"]` and returns the session. If `outfit` is empty or whitespace-only, `create_fit_card` returns a descriptive error string (e.g. "Could not generate fit card: outfit suggestion was empty.") which is stored in `session["fit_card"]` — this is a degraded output, not a hard stop.
 
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
-The user sees three panels in the Gradio interface: the top search result, the outfit suggestion, and the fit card caption. On the error path, only a single message appears explaining what to change.
+The Gradio UI displays three panels:
+- **Listing:** "Y2K Baby Tee — Butterfly Print — $18.00, depop, excellent condition"
+- **Outfit suggestion:** "Pair the Y2K baby tee with your baggy straight-leg jeans and chunky white sneakers..."
+- **Fit card:** "thrifted this y2k butterfly tee off depop for $18 and it was made for my baggy jeans 🦋..."
+
+On the error path, only the error panel appears: "No listings matched your search. Try a broader description, a different size, or raise your price limit."
